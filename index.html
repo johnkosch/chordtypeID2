@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Chord Type ID</title>
+<script src="https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js" defer></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#222;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.app{width:min(560px,94vw);margin:32px auto}h1{text-align:center;margin:0 0 6px;font-size:2rem}.sub{text-align:center;color:#666;margin:0 0 22px}.card{background:#fff;border-radius:18px;padding:26px;box-shadow:0 5px 20px rgba(0,0,0,.07);text-align:center}#key{font-size:1.35rem;font-weight:700;margin-bottom:4px}#status{min-height:22px;color:#777;font-size:.9rem;margin-bottom:4px}#notation{width:100%;height:250px;margin:0 auto;overflow:hidden;display:flex;justify-content:center;align-items:flex-start}#notation svg{display:block;width:auto;height:100%;margin:0 auto}.question{color:#555;margin:0 0 12px}.choices{display:grid;grid-template-columns:1fr;gap:11px;max-width:420px;margin:auto}#filters{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;max-width:420px;margin:0 auto 18px;text-align:left}#filters label{display:flex;align-items:center;gap:8px;font-size:.95rem;cursor:pointer}#filters input{width:17px;height:17px;accent-color:#222}.filter-title{font-size:.85rem;color:#666;margin:4px 0 9px}button{font:inherit;font-weight:650;border:2px solid #d5d5d5;background:#fff;border-radius:12px;padding:14px;cursor:pointer}button:hover{border-color:#777}button.correct{background:#e8f6ea;border-color:#3d9852}button.wrong{background:#fdeaea;border-color:#c94c48}button:disabled{cursor:default}#feedback{min-height:30px;margin:17px 0 5px;font-weight:650}#next{display:none;background:#222;color:#fff;border-color:#222;min-width:170px}#score{margin-top:17px;color:#666;font-size:.95rem}@media(max-width:520px){.card{padding:20px 12px}}
+</style></head><body><div class="app"><h1>Chord Type ID</h1><p class="sub">Identify the type of chord.</p><div class="card"><div id="key"></div><div id="status">Loading notation engine…</div><div id="notation"></div><p class="question">What type of chord is this?</p><p class="filter-title">CHORD TYPES TO PRACTICE</p><div id="filters"></div><div class="choices" id="choices"></div><div id="feedback" aria-live="polite"></div><button id="next">Next</button><div id="score">Score: 0 / 0</div></div></div>
+<script>
+const MAJOR_KEYS=[
+{name:"C major",tonic:"C",pc:0,sigType:null,sigCount:0,mode:"major"},{name:"G major",tonic:"G",pc:7,sigType:"s",sigCount:1,mode:"major"},{name:"D major",tonic:"D",pc:2,sigType:"s",sigCount:2,mode:"major"},{name:"A major",tonic:"A",pc:9,sigType:"s",sigCount:3,mode:"major"},{name:"E major",tonic:"E",pc:4,sigType:"s",sigCount:4,mode:"major"},{name:"B major",tonic:"B",pc:11,sigType:"s",sigCount:5,mode:"major"},{name:"F♯ major",tonic:"F#",pc:6,sigType:"s",sigCount:6,mode:"major"},{name:"F major",tonic:"F",pc:5,sigType:"f",sigCount:1,mode:"major"},{name:"B♭ major",tonic:"Bb",pc:10,sigType:"f",sigCount:2,mode:"major"},{name:"E♭ major",tonic:"Eb",pc:3,sigType:"f",sigCount:3,mode:"major"},{name:"A♭ major",tonic:"Ab",pc:8,sigType:"f",sigCount:4,mode:"major"},{name:"D♭ major",tonic:"Db",pc:1,sigType:"f",sigCount:5,mode:"major"},{name:"G♭ major",tonic:"Gb",pc:6,sigType:"f",sigCount:6,mode:"major"},{name:"C♭ major",tonic:"Cb",pc:11,sigType:"f",sigCount:7,mode:"major"},{name:"C♯ major",tonic:"C#",pc:1,sigType:"s",sigCount:7,mode:"major"}];
+const MINOR_KEYS=[
+{name:"A minor",tonic:"A",pc:9,sigType:null,sigCount:0,mode:"minor"},{name:"E minor",tonic:"E",pc:4,sigType:"s",sigCount:1,mode:"minor"},{name:"B minor",tonic:"B",pc:11,sigType:"s",sigCount:2,mode:"minor"},{name:"F♯ minor",tonic:"F#",pc:6,sigType:"s",sigCount:3,mode:"minor"},{name:"C♯ minor",tonic:"C#",pc:1,sigType:"s",sigCount:4,mode:"minor"},{name:"G♯ minor",tonic:"G#",pc:8,sigType:"s",sigCount:5,mode:"minor"},{name:"D minor",tonic:"D",pc:2,sigType:"f",sigCount:1,mode:"minor"},{name:"G minor",tonic:"G",pc:7,sigType:"f",sigCount:2,mode:"minor"},{name:"C minor",tonic:"C",pc:0,sigType:"f",sigCount:3,mode:"minor"},{name:"F minor",tonic:"F",pc:5,sigType:"f",sigCount:4,mode:"minor"},{name:"B♭ minor",tonic:"Bb",pc:10,sigType:"f",sigCount:5,mode:"minor"},{name:"E♭ minor",tonic:"Eb",pc:3,sigType:"f",sigCount:6,mode:"minor"}];
+const LETTERS=["C","D","E","F","G","A","B"],NAT={C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+const MAJOR_INTERVALS=[0,2,4,5,7,9,11],MINOR_INTERVALS=[0,2,3,5,7,8,10];
+const MAJOR_TARGETS=[{key:"ii",degree:1},{key:"iii",degree:2},{key:"IV",degree:3},{key:"V",degree:4},{key:"vi",degree:5}];
+const MINOR_TARGETS=[{key:"III",degree:2},{key:"iv",degree:3},{key:"V",degree:4},{key:"VI",degree:5}];
+let vrvToolkit=null,current=null,correctCount=0,total=0;
+const CHORD_TYPES=[{id:"secondary",label:"Secondary Dominant"},{id:"borrowed",label:"Borrowed Chord"},{id:"neapolitan",label:"Neapolitan 6"},{id:"augmentedSixth",label:"Augmented Sixth"},{id:"diminishedSeventh",label:"Diminished Seventh"}];
+let selectedKinds=new Set(CHORD_TYPES.map(x=>x.id));
+function mod(n,m){return((n%m)+m)%m}function parseNote(n){return{letter:n[0],acc:n.slice(1)}}
+function notePC(n){let p=parseNote(n),v=NAT[p.letter];for(const c of p.acc)v+=c==="#"?1:-1;return mod(v,12)}
+function spellWithLetter(letter,pc){let d=mod(pc-NAT[letter],12);if(d>6)d-=12;if(d===0)return letter;if(d===1)return letter+"#";if(d===2)return letter+"##";if(d===-1)return letter+"b";if(d===-2)return letter+"bb";throw Error(`Cannot spell ${letter} at pitch class ${pc}`)}
+function targetPitch(key,degree){return mod(key.pc+(key.mode==="major"?MAJOR_INTERVALS[degree]:MINOR_INTERVALS[degree]),12)}
+function spellSecondaryDominant(key,target){let li=LETTERS.indexOf(key.tonic[0]),tl=LETTERS[mod(li+target.degree,7)],tpc=targetPitch(key,target.degree),rpc=mod(tpc+7,12),rl=LETTERS[mod(LETTERS.indexOf(tl)+4,7)],root=spellWithLetter(rl,rpc);return{root,third:spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+2,7)],mod(rpc+4,12)),fifth:spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+4,7)],mod(rpc+7,12)),seventh:spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+6,7)],mod(rpc+10,12)),quality:4}}
+function spellMixtureChord(key,target){let li=LETTERS.indexOf(key.tonic[0]),degree=target.degree,rl=LETTERS[mod(li+degree,7)],intervals={"iiø":[0,3,6,10],"♭III":[0,4,7],"iv":[0,3,7],"♭VI":[0,4,7],"♭VII":[0,4,7],"vii°":[0,3,6,9]}[target.key];let rpc=mod(key.pc+(key.mode==="major"?MAJOR_INTERVALS[degree]:MINOR_INTERVALS[degree]),12);if(["♭III","♭VI","♭VII"].includes(target.key))rpc=mod(rpc-1,12);let c={root:spellWithLetter(rl,rpc),quality:intervals.length};c.third=spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+2,7)],mod(rpc+intervals[1],12));c.fifth=spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+4,7)],mod(rpc+intervals[2],12));if(intervals.length===4)c.seventh=spellWithLetter(LETTERS[mod(LETTERS.indexOf(rl)+6,7)],mod(rpc+intervals[3],12));return c}
+function spellNeapolitan(key){let li=LETTERS.indexOf(key.tonic[0]);let rootLetter=LETTERS[mod(li+1,7)],thirdLetter=LETTERS[mod(li+3,7)],fifthLetter=LETTERS[mod(li+5,7)];return{root:spellWithLetter(rootLetter,mod(key.pc+1,12)),third:spellWithLetter(thirdLetter,mod(key.pc+5,12)),fifth:spellWithLetter(fifthLetter,mod(key.pc+8,12)),quality:3}}
+function augSixthPitchForDegree(key,degree,semitones){
+ let tonicLetter=key.tonic[0],ti=LETTERS.indexOf(tonicLetter),letter=LETTERS[mod(ti+degree,7)],octave=4+Math.floor((ti+degree)/7),desired=mod(key.pc+semitones,12);
+ return spellWithLetter(letter,desired)+"|"+octave;
+}
+function parseAugPitch(value){let [spelling,octave]=value.split("|");return{note:spelling,octave:+octave}}
+function augmentedSixthChord(key,type){
+ const le=parseAugPitch(augSixthPitchForDegree(key,5,8));
+ const doNote=parseAugPitch(augSixthPitchForDegree(key,0,0));
+ const fi=parseAugPitch(augSixthPitchForDegree(key,3,6));
+ const re=parseAugPitch(augSixthPitchForDegree(key,1,2));
+ const me=parseAugPitch(augSixthPitchForDegree(key,2,3));
+ const tones=type==="Italian"?[le,doNote,doNote,fi]:type==="French"?[le,doNote,re,fi]:[le,doNote,me,fi];
+ return{tones,le,fi};
+}
+function diminishedSeventhChord(key,targetDegree){
+ const targetLetter=LETTERS[mod(LETTERS.indexOf(key.tonic[0])+targetDegree,7)];
+ const rootLetter=LETTERS[mod(LETTERS.indexOf(targetLetter)-1,7)];
+ const targetPc=targetPitch(key,targetDegree),rootPc=mod(targetPc-1,12);
+ const intervals=[0,3,6,9];
+ const tones=intervals.map((semitones,i)=>({
+  note:spellWithLetter(LETTERS[mod(LETTERS.indexOf(rootLetter)+2*i,7)],mod(rootPc+semitones,12))
+ }));
+ return{tones,label:"Diminished Seventh",target:targetDegree};
+}
+function preferredDiminishedSeventhVoicing(chord){
+ const candidates=[];
+ for(let a=2;a<=4;a++)for(let b=3;b<=5;b++)for(let c=3;c<=5;c++)for(let d=3;d<=5;d++){
+  const pitches=chord.tones.map((p,i)=>({...p,octave:[a,b,c,d][i]}));
+  const ordered=[...pitches].sort((x,y)=>absoluteMidi(x.note,x.octave)-absoluteMidi(y.note,y.octave));
+  const midi=ordered.map(p=>absoluteMidi(p.note,p.octave));
+  if(midi[2]-midi[1]>12||midi[3]-midi[2]>12)continue;
+  if(midi[1]-midi[0]<8)continue;
+  const score=Math.abs(midi[0]-48)+Math.abs(midi[1]-60)+Math.abs(midi[2]-67)+Math.abs(midi[3]-72);
+  candidates.push({pitches,score});
+ }
+ candidates.sort((a,b)=>a.score-b.score);
+ if(!candidates.length)return null;
+ return candidates[0].pitches.map(p=>({staff:absoluteMidi(p.note,p.octave)<60?2:1,note:p.note,octave:p.octave}));
+}
+function absoluteMidi(note,octave){return(octave+1)*12+notePC(note)}
+function preferredAugSixthVoicing(chord){
+ const candidates=[];
+ for(let a=2;a<=4;a++)for(let b=3;b<=5;b++)for(let c=3;c<=5;c++)for(let d=3;d<=5;d++){
+  const pitches=chord.tones.map((p,i)=>({...p,octave:[a,b,c,d][i]}));
+  const ordered=[...pitches].sort((x,y)=>absoluteMidi(x.note,x.octave)-absoluteMidi(y.note,y.octave));
+  const midi=ordered.map(p=>absoluteMidi(p.note,p.octave));
+  if(midi[2]-midi[1]>12||midi[3]-midi[2]>12)continue;
+  if(midi[1]-midi[0]<8)continue;
+  const le=pitches.filter(p=>p.note===chord.le.note).map(p=>absoluteMidi(p.note,p.octave));
+  const fi=pitches.filter(p=>p.note===chord.fi.note).map(p=>absoluteMidi(p.note,p.octave));
+  if(Math.min(...le)>=Math.max(...fi))continue;
+  const score=Math.abs(midi[0]-48)+Math.abs(midi[1]-60)+Math.abs(midi[2]-67)+Math.abs(midi[3]-72);
+  candidates.push({pitches,score});
+ }
+ candidates.sort((a,b)=>a.score-b.score);
+ if(!candidates.length)return null;
+ return candidates[0].pitches.map(p=>({staff:absoluteMidi(p.note,p.octave)<60?2:1,note:p.note,octave:p.octave}));
+}
+function absoluteParts(note){let m=note.match(/^([A-G])([#b]*)(\d+)$/);if(!m)throw Error("Invalid pitch "+note);return{letter:m[1],acc:m[2],oct:+m[3]}}
+function midiPitch(note){let p=absoluteParts(note),v=NAT[p.letter];for(const c of p.acc)v+=c==="#"?1:-1;return(p.oct+1)*12+v}
+function octaveForMidi(midi,spelling){let p=parseNote(spelling);for(let o=0;o<=9;o++){let v=(o+1)*12+NAT[p.letter];for(const c of p.acc)v+=c==="#"?1:-1;if(v===midi)return o}throw Error(`Cannot place ${spelling} at MIDI ${midi}`)}
+function transposeNeapolitan(chord,key){let family1=[7,8,9,10,11,0,1].includes(key.pc),anchor=family1?7:2,shift=mod(key.pc-anchor,12);let proto=family1?[{n:"C3",tone:"third"},{n:"Ab3",tone:"root"},{n:"C4",tone:"third"},{n:"Eb4",tone:"fifth"}]:[{n:"G2",tone:"third"},{n:"G3",tone:"third"},{n:"Eb4",tone:"root"},{n:"Bb4",tone:"fifth"}];return proto.map(v=>{let midi=midiPitch(v.n)+shift,spelling=chord[v.tone];return{staff:midi<60?2:1,note:spelling,octave:octaveForMidi(midi,spelling)}})}
+function genericVoicing(chord,category,key){let tones=chord.quality===4?["root","fifth","third","seventh"]:["root","fifth","root","third"];let base=category==="secondary"?3:3;let midiNotes=tones.map((t,i)=>{let sp=chord[t],pc=notePC(sp),oct=(i<2?3:4),m=(oct+1)*12+pc;return{staff:i<2?2:1,note:sp,octave:oct}});return midiNotes}
+function keySignatureMEI(key){return key.sigCount?`<keySig sig="${key.sigCount}${key.sigType}"/>`:""}
+function keyDefaults(key){let o={C:"",D:"",E:"",F:"",G:"",A:"",B:""};if(key.sigType==="s")["F","C","G","D","A","E","B"].slice(0,key.sigCount).forEach(x=>o[x]="#");if(key.sigType==="f")["B","E","A","D","G","C","F"].slice(0,key.sigCount).forEach(x=>o[x]="b");return o}
+function meiAccidental(note,key){let p=parseNote(note),d=keyDefaults(key)[p.letter];if(p.acc===d)return"";if(p.acc==="")return d?"n":"";return p.acc==="#"?"s":p.acc==="##"?"ss":p.acc==="b"?"f":p.acc==="bb"?"ff":""}
+function meiNote(n,key){let a=meiAccidental(n.note,key);return`<note pname="${n.note[0].toLowerCase()}" oct="${n.octave}"${a?` accid="${a}"`:""}/>`}
+function buildMEI(key,notes){let upper=notes.filter(n=>n.staff===1).map(n=>meiNote(n,key)).join(""),lower=notes.filter(n=>n.staff===2).map(n=>meiNote(n,key)).join("");return`<?xml version="1.0" encoding="UTF-8"?><mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="5.0"><music><body><mdiv><score><scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5" clef.shape="G" clef.line="2"/><staffDef n="2" lines="5" clef.shape="F" clef.line="4"/></staffGrp>${keySignatureMEI(key)}</scoreDef><section><measure n="1"><staff n="1"><layer n="1"><chord dur="1">${upper}</chord></layer></staff><staff n="2"><layer n="1"><chord dur="1">${lower}</chord></layer></staff></measure></section></score></mdiv></body></music></mei>`}
+function renderQuestion(){if(!vrvToolkit||!current)return;vrvToolkit.setOptions({scale:40,pageHeight:400,adjustPageWidth:true,pageMarginTop:0,pageMarginBottom:0,pageMarginLeft:50,pageMarginRight:50});try{let svg=vrvToolkit.renderData(buildMEI(current.key,current.notes),{});document.getElementById("notation").innerHTML=svg||"";document.getElementById("status").textContent=svg?"":"Verovio could not engrave this chord."}catch(e){document.getElementById("status").textContent="Notation error: "+e.message}}
+function newQuestion(){document.getElementById("feedback").textContent="";document.getElementById("next").style.display="none";let all=[...MAJOR_KEYS,...MINOR_KEYS],availableKinds=[...selectedKinds],kind=availableKinds[Math.floor(Math.random()*availableKinds.length)],key=(kind==="borrowed"||kind==="augmentedSixth"?MAJOR_KEYS:kind==="neapolitan"?MINOR_KEYS:kind==="diminishedSeventh"?all:all)[Math.floor(Math.random()*(kind==="borrowed"||kind==="augmentedSixth"?MAJOR_KEYS:kind==="neapolitan"?MINOR_KEYS:all).length)],chord,notes;if(kind==="secondary"){let ts=key.mode==="major"?MAJOR_TARGETS:MINOR_TARGETS,target=ts[Math.floor(Math.random()*ts.length)];chord=spellSecondaryDominant(key,target);notes=genericVoicing(chord,kind,key)}else if(kind==="borrowed"){let ts=[{key:"iiø",degree:1},{key:"♭III",degree:2},{key:"iv",degree:3},{key:"♭VI",degree:5},{key:"♭VII",degree:6},{key:"vii°",degree:6}],target=ts[Math.floor(Math.random()*ts.length)];chord=spellMixtureChord(key,target);notes=genericVoicing(chord,kind,key)}else if(kind==="neapolitan"){chord=spellNeapolitan(key);notes=transposeNeapolitan(chord,key)}else if(kind==="augmentedSixth"){let type=["Italian","French","German"][Math.floor(Math.random()*3)];chord=augmentedSixthChord(key,type);notes=preferredAugSixthVoicing(chord);if(!notes){return newQuestion()}chord.label=type+" +6"}else{let targetDegrees=key.mode==="major"?[1,4]:[3,0],degree=targetDegrees[Math.floor(Math.random()*targetDegrees.length)];chord=diminishedSeventhChord(key,degree);notes=preferredDiminishedSeventhVoicing(chord);if(!notes){return newQuestion()}}current={key,kind,chord,notes};document.getElementById("key").textContent=key.name;renderChoices();renderQuestion()}
+function renderFilters(){
+ let box=document.getElementById("filters");box.innerHTML="";
+ CHORD_TYPES.forEach(x=>{
+  let label=document.createElement("label"),input=document.createElement("input");
+  input.type="checkbox";input.checked=selectedKinds.has(x.id);input.dataset.kind=x.id;
+  input.addEventListener("change",()=>{
+   if(input.checked){
+    selectedKinds.add(x.id);
+    renderChoices();
+   }else{
+    selectedKinds.delete(x.id);
+    if(selectedKinds.size===0){selectedKinds.add(x.id);input.checked=true;return}
+    newQuestion();
+   }
+  });
+  label.append(input,document.createTextNode(x.label));box.appendChild(label);
+ });
+}
+function renderChoices(){
+ let box=document.getElementById("choices");box.innerHTML="";
+ CHORD_TYPES.filter(x=>selectedKinds.has(x.id)).forEach(x=>{
+  let b=document.createElement("button");b.textContent=x.label;b.dataset.answer=x.id;
+  b.addEventListener("click",()=>answer(b));box.appendChild(b);
+ });
+}
+function answer(button){if(button.disabled)return;document.querySelectorAll("#choices button").forEach(b=>b.disabled=true);let correct=button.dataset.answer===current.kind;button.classList.add(correct?"correct":"wrong");if(!correct){let right=document.querySelector(`[data-answer="${current.kind}"]`);if(right)right.classList.add("correct")}total++;if(correct)correctCount++;document.getElementById("score").textContent=`Score: ${correctCount} / ${total}`;document.getElementById("feedback").textContent=correct?"Correct!":`Not quite. This is a ${current.kind==="secondary"?"secondary dominant":current.kind==="borrowed"?"borrowed chord":current.kind==="neapolitan"?"Neapolitan 6":current.kind==="diminishedSeventh"?"diminished seventh":current.chord.label+" chord"}.`;document.getElementById("next").style.display="inline-block"}
+document.getElementById("next").addEventListener("click",newQuestion);renderFilters();document.addEventListener("DOMContentLoaded",()=>{if(!window.verovio||!verovio.module){document.getElementById("status").textContent="Verovio did not load. Check your internet connection and refresh.";return}verovio.module.onRuntimeInitialized=()=>{vrvToolkit=new verovio.toolkit();document.getElementById("status").textContent="";newQuestion()}});
+</script></body></html>
